@@ -132,15 +132,14 @@ export const insertEntry = async (req, res) => {
 
     const timestamp = new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' });
     const now = new Date();
-
-    // Check for curfew violation and permits
+    
     const permitCheck = await hasValidPermit(studentNumber, now);
     const hasPermit = permitCheck.hasPermit;
     const permitData = permitCheck.permitData;
     let hasViolation = false;
     
     if (isDuringCurfew(now) && !hasPermit) {
-      console.log(`Recording violation for ${studentNumber}`);
+      console.log(`Recording violation for ${studentNumber} at ${now.toLocaleString()}`);
       await recordViolation(
         studentNumber,
         fullName,
