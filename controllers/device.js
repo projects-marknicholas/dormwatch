@@ -34,24 +34,32 @@ const hasValidPermit = async (studentNumber, currentTime) => {
     
     for (const doc of querySnapshot.docs) {
       const permit = doc.data();
-      const permitId = doc.id;
       
-      // Convert expected dates/times to Date objects for comparison
-      const expectedDeparture = new Date(`${permit.expected_date}T${permit.expected_time}:00`);
-      const expectedArrival = new Date(`${permit.expected_arrival_date}T${permit.expected_arrival_time}:00`);
+      // Create full datetime strings in PH timezone
+      const departureDateTime = `${permit.expected_date}T${permit.expected_time}`;
+      const arrivalDateTime = `${permit.expected_arrival_date}T${permit.expected_arrival_time}`;
+      
+      // Convert to Date objects using PH timezone
+      const departureDate = new Date(departureDateTime + '+08:00');
+      const arrivalDate = new Date(arrivalDateTime + '+08:00');
+      
+      // Debug logs to verify the times
+      console.log('Checking permit window:');
+      console.log('Current time:', currentTime.toLocaleString('en-PH', { timeZone: 'Asia/Manila' }));
+      console.log('Permit window:', departureDate.toLocaleString('en-PH', { timeZone: 'Asia/Manila' }), 
+                  'to', arrivalDate.toLocaleString('en-PH', { timeZone: 'Asia/Manila' }));
       
       // Check if current time is within permit window
-      if (currentTime >= expectedDeparture && currentTime <= expectedArrival) {
+      if (currentTime >= departureDate && currentTime <= arrivalDate) {
+        console.log('Valid permit found for current time');
         return {
           hasPermit: true,
-          permitData: {
-            ...permit,
-            id: permitId
-          }
+          permitData: permit
         };
       }
     }
     
+    console.log('No valid permits found for current time');
     return {
       hasPermit: false,
       permitData: null
@@ -124,24 +132,26 @@ export const insertEntry = async (req, res) => {
     const userDoc = querySnapshot.docs[0];
     const userData = userDoc.data();
     
-    // Construct full name and get student number
-    const firstName = userData.first_name || '';
-    const middleName = userData.middle_name ? `${userData.middle_name.charAt(0)}.` : '';
-    const lastName = userData.last_name || '';
-    const fullName = `${firstName} ${middleName} ${lastName}`.replace(/\s+/g, ' ').trim();
+    // Construct full name
+    const fullName = `${userData.first_name || ''} ${userData.middle_name ? userData.middle_name.charAt(0) + '.' : ''} ${userData.last_name || ''}`.replace(/\s+/g, ' ').trim();
     const studentNumber = userData.student_number || '';
     const dormResidence = userData.dorm_residence || 'Unknown';
 
-    const timestamp = new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' });
+    // Get current time in PH timezone
     const now = new Date();
-    
+    const phTimeStr = now.toLocaleString('en-PH', { timeZone: 'Asia/Manila' });
+    const timestamp = new Date(phTimeStr).toISOString();
+
+    // Check for valid permits and curfew
     const permitCheck = await hasValidPermit(studentNumber, now);
     const hasPermit = permitCheck.hasPermit;
     const permitData = permitCheck.permitData;
+    const isCurfew = isDuringCurfew(now);
     let hasViolation = false;
-    
-    if (isDuringCurfew(now) && !hasPermit) {
-      console.log(`Recording violation for ${studentNumber} at ${now.toLocaleString()}`);
+
+    // Record violation if during curfew without permit
+    if (isCurfew && !hasPermit) {
+      console.log(`Recording curfew violation for ${studentNumber}`);
       await recordViolation(
         studentNumber,
         fullName,
@@ -151,12 +161,12 @@ export const insertEntry = async (req, res) => {
       hasViolation = true;
     }
 
-    // Check for the latest entry of this student
+    // Check for latest entry to determine time_in/time_out
     const entriesRef = collection(db, "entries");
     const studentEntriesQuery = query(
       entriesRef,
       where("student_no", "==", studentNumber),
-      orderBy("time_in", "desc"),
+      orderBy("time_in_timestamp", "desc"),
       limit(1)
     );
 
@@ -167,20 +177,16 @@ export const insertEntry = async (req, res) => {
       const latestEntry = latestEntrySnapshot.docs[0];
       const latestEntryData = latestEntry.data();
       
-      // If latest entry doesn't have time_out, update it
       if (!latestEntryData.time_out) {
+        // Update time_out
         const updateData = {
           time_out: timestamp,
-          time_out_timestamp: now
+          time_out_timestamp: now,
+          has_violation: hasViolation
         };
         
-        // Add permit info if available
         if (hasPermit) {
-          updateData.permit = {
-            id: permitData.id,
-            type: permitData.permit_type,
-            expected_return: `${permitData.expected_arrival_date} ${permitData.expected_arrival_time}`
-          };
+          updateData.permit_id = permitData.id;
         }
 
         await updateDoc(latestEntry.ref, updateData);
@@ -193,12 +199,8 @@ export const insertEntry = async (req, res) => {
           timestamp,
           message: "Time out recorded",
           entryType: "time_out",
-          isDuringCurfew: isDuringCurfew(now),
+          isDuringCurfew: isCurfew,
           hasPermit,
-          permit: hasPermit ? {
-            type: permitData.permit_type,
-            expectedReturn: `${permitData.expected_arrival_date} ${permitData.expected_arrival_time}`
-          } : null,
           hasViolation
         };
       } else {
@@ -210,16 +212,12 @@ export const insertEntry = async (req, res) => {
           time_in: timestamp,
           time_in_timestamp: now,
           time_out: "",
-          time_out_timestamp: null
+          time_out_timestamp: null,
+          has_violation: hasViolation
         };
         
-        // Add permit info if available
         if (hasPermit) {
-          entryData.permit = {
-            id: permitData.id,
-            type: permitData.permit_type,
-            expected_return: `${permitData.expected_arrival_date} ${permitData.expected_arrival_time}`
-          };
+          entryData.permit_id = permitData.id;
         }
 
         await addDoc(entriesRef, entryData);
@@ -232,17 +230,13 @@ export const insertEntry = async (req, res) => {
           timestamp,
           message: "Time in recorded",
           entryType: "time_in",
-          isDuringCurfew: isDuringCurfew(now),
+          isDuringCurfew: isCurfew,
           hasPermit,
-          permit: hasPermit ? {
-            type: permitData.permit_type,
-            expectedReturn: `${permitData.expected_arrival_date} ${permitData.expected_arrival_time}`
-          } : null,
           hasViolation
         };
       }
     } else {
-      // First entry for this student - time in
+      // First entry - time in
       const entryData = {
         student_no: studentNumber,
         student_name: fullName,
@@ -250,16 +244,12 @@ export const insertEntry = async (req, res) => {
         time_in: timestamp,
         time_in_timestamp: now,
         time_out: "",
-        time_out_timestamp: null
+        time_out_timestamp: null,
+        has_violation: hasViolation
       };
       
-      // Add permit info if available
       if (hasPermit) {
-        entryData.permit = {
-          id: permitData.id,
-          type: permitData.permit_type,
-          expected_return: `${permitData.expected_arrival_date} ${permitData.expected_arrival_time}`
-        };
+        entryData.permit_id = permitData.id;
       }
 
       await addDoc(entriesRef, entryData);
@@ -272,12 +262,8 @@ export const insertEntry = async (req, res) => {
         timestamp,
         message: "Time in recorded",
         entryType: "time_in",
-        isDuringCurfew: isDuringCurfew(now),
+        isDuringCurfew: isCurfew,
         hasPermit,
-        permit: hasPermit ? {
-          type: permitData.permit_type,
-          expectedReturn: `${permitData.expected_arrival_date} ${permitData.expected_arrival_time}`
-        } : null,
         hasViolation
       };
     }
@@ -288,12 +274,8 @@ export const insertEntry = async (req, res) => {
     lastStudentData = {
       fullName,
       studentNumber,
-      isDuringCurfew: isDuringCurfew(now),
+      isDuringCurfew: isCurfew,
       hasPermit,
-      permit: hasPermit ? {
-        type: permitData.permit_type,
-        expectedReturn: `${permitData.expected_arrival_date} ${permitData.expected_arrival_time}`
-      } : null,
       hasViolation
     };
     
