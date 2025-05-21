@@ -339,9 +339,7 @@ export const sseUpdates = (req, res) => {
     isDuringCurfew: lastStudentData?.isDuringCurfew || false,
     hasPermit: lastStudentData?.hasPermit || false,
     permit: lastStudentData?.permit || null,
-    hasViolation: lastStudentData?.hasViolation || false,
-    phTime: now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }) || "Invalid Date",
-    timeNow: now.toString
+    hasViolation: lastStudentData?.hasViolation || false
   })}\n\n`);
 
   const clientId = Date.now();
