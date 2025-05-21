@@ -10,10 +10,12 @@ let lastStudentData = null;
 
 // Helper function to check if time is within curfew hours (10:30 PM to 6:00 AM)
 const isDuringCurfew = (date) => {
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
+  const phTimeStr = date.toLocaleString('en-US', { timeZone: 'Asia/Manila' });
+  const phDate = new Date(phTimeStr);
   
-  // Curfew is from 22:30 (10:30 PM) to 06:00 (6:00 AM)
+  const hours = phDate.getHours();
+  const minutes = phDate.getMinutes();
+  
   return (hours > 22 || (hours === 22 && minutes >= 30)) || 
          (hours < 6);
 };
@@ -337,7 +339,9 @@ export const sseUpdates = (req, res) => {
     isDuringCurfew: lastStudentData?.isDuringCurfew || false,
     hasPermit: lastStudentData?.hasPermit || false,
     permit: lastStudentData?.permit || null,
-    hasViolation: lastStudentData?.hasViolation || false
+    hasViolation: lastStudentData?.hasViolation || false,
+    phTime: now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }) || "Invalid Date",
+    timeNow: now
   })}\n\n`);
 
   const clientId = Date.now();
