@@ -1,5 +1,5 @@
 import { db } from "../config/config.js";
-import { collection, query, where, getDocs, addDoc, updateDoc, doc, orderBy, limit, startAfter } from "firebase/firestore";
+import { collection, query, where, getDocs, addDoc, updateDoc, doc, orderBy, limit } from "firebase/firestore";
 
 // Store connected clients for SSE
 const clients = new Set();
@@ -8,19 +8,16 @@ let lastUID = null;
 let lastTimestamp = null;
 let lastStudentData = null;
 
-// Helper function to check if time is within curfew hours (10:30 PM to 6:00 AM PH time)
+// Helper function to check if time is within curfew hours (10:30 PM to 6:00 AM)
 const isDuringCurfew = (date) => {
-  const phTimeStr = date.toLocaleString('en-US', { timeZone: 'Asia/Manila' });
-  const phDate = new Date(phTimeStr);
-  
-  const hours = phDate.getHours();
-  const minutes = phDate.getMinutes();
+  const hours = date.getHours();
+  const minutes = date.getMinutes();
   
   return (hours > 22 || (hours === 22 && minutes >= 30)) || 
          (hours < 6);
 };
 
-// Enhanced permit checking with proper timezone handling
+// Improved permit checking with better error handling
 const hasValidPermit = async (studentNumber, currentTime) => {
   try {
     const permitsRef = collection(db, "permits");
@@ -34,38 +31,37 @@ const hasValidPermit = async (studentNumber, currentTime) => {
     
     for (const doc of querySnapshot.docs) {
       const permit = doc.data();
-      const permitId = doc.id;
       
-      // Create full datetime strings with explicit timezone
-      const departureStr = `${permit.expected_date}T${permit.expected_time}+08:00`;
-      const arrivalStr = `${permit.expected_arrival_date}T${permit.expected_arrival_time}+08:00`;
-      
-      const departureDate = new Date(departureStr);
-      const arrivalDate = new Date(arrivalStr);
+      try {
+        // Parse dates with proper timezone handling
+        const departureDateStr = `${permit.expected_date}T${permit.expected_time}`;
+        const arrivalDateStr = `${permit.expected_arrival_date}T${permit.expected_arrival_time}`;
+        
+        // Create dates in local timezone (assuming dates are stored in PH time)
+        const departureDate = new Date(departureDateStr);
+        const arrivalDate = new Date(arrivalDateStr);
 
-      // Debug logs for verification
-      console.log('Checking permit:', permitId);
-      console.log('Current PH time:', currentTime.toLocaleString('en-PH', { timeZone: 'Asia/Manila' }));
-      console.log('Permit window:', 
-        departureDate.toLocaleString('en-PH', { timeZone: 'Asia/Manila' }), 
-        'to', 
-        arrivalDate.toLocaleString('en-PH', { timeZone: 'Asia/Manila' })
-      );
+        // Add debug logging
+        console.log('Checking permit window:');
+        console.log('Current time:', currentTime);
+        console.log('Departure time:', departureDate);
+        console.log('Arrival time:', arrivalDate);
 
-      // Check if current time is within permit window
-      if (currentTime >= departureDate && currentTime <= arrivalDate) {
-        console.log('Valid permit found');
-        return {
-          hasPermit: true,
-          permitData: {
-            ...permit,
-            id: permitId
-          }
-        };
+        if (currentTime >= departureDate && currentTime <= arrivalDate) {
+          return {
+            hasPermit: true,
+            permitData: {
+              ...permit,
+              id: doc.id
+            }
+          };
+        }
+      } catch (dateError) {
+        console.error('Error parsing permit dates:', dateError);
+        continue; // Skip this permit if date parsing fails
       }
     }
     
-    console.log('No valid permits found');
     return {
       hasPermit: false,
       permitData: null
@@ -138,26 +134,24 @@ export const insertEntry = async (req, res) => {
     const userDoc = querySnapshot.docs[0];
     const userData = userDoc.data();
     
-    // Construct full name
-    const fullName = `${userData.first_name || ''} ${userData.middle_name ? userData.middle_name.charAt(0) + '.' : ''} ${userData.last_name || ''}`.replace(/\s+/g, ' ').trim();
+    // Construct full name and get student number
+    const firstName = userData.first_name || '';
+    const middleName = userData.middle_name ? `${userData.middle_name.charAt(0)}.` : '';
+    const lastName = userData.last_name || '';
+    const fullName = `${firstName} ${middleName} ${lastName}`.replace(/\s+/g, ' ').trim();
     const studentNumber = userData.student_number || '';
     const dormResidence = userData.dorm_residence || 'Unknown';
 
-    // Get current time in PH timezone
+    const timestamp = new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' });
     const now = new Date();
-    const phTimeStr = now.toLocaleString('en-PH', { timeZone: 'Asia/Manila' });
-    const timestamp = new Date(phTimeStr).toISOString();
-
-    // Check for valid permits and curfew
+    
     const permitCheck = await hasValidPermit(studentNumber, now);
     const hasPermit = permitCheck.hasPermit;
     const permitData = permitCheck.permitData;
-    const isCurfew = isDuringCurfew(now);
     let hasViolation = false;
-
-    // Record violation if during curfew without permit
-    if (isCurfew && !hasPermit) {
-      console.log(`Recording curfew violation for ${studentNumber}`);
+    
+    if (isDuringCurfew(now) && !hasPermit) {
+      console.log(`Recording violation for ${studentNumber} at ${now.toLocaleString()}`);
       await recordViolation(
         studentNumber,
         fullName,
@@ -167,7 +161,7 @@ export const insertEntry = async (req, res) => {
       hasViolation = true;
     }
 
-    // Check for latest entry
+    // Check for the latest entry of this student
     const entriesRef = collection(db, "entries");
     const studentEntriesQuery = query(
       entriesRef,
@@ -183,8 +177,8 @@ export const insertEntry = async (req, res) => {
       const latestEntry = latestEntrySnapshot.docs[0];
       const latestEntryData = latestEntry.data();
       
+      // If latest entry doesn't have time_out, update it
       if (!latestEntryData.time_out) {
-        // Update time_out
         const updateData = {
           time_out: timestamp,
           time_out_timestamp: now,
@@ -206,7 +200,7 @@ export const insertEntry = async (req, res) => {
           timestamp,
           message: "Time out recorded",
           entryType: "time_out",
-          isDuringCurfew: isCurfew,
+          isDuringCurfew: isDuringCurfew(now),
           hasPermit,
           hasViolation,
           permit: hasPermit ? {
@@ -242,7 +236,7 @@ export const insertEntry = async (req, res) => {
           timestamp,
           message: "Time in recorded",
           entryType: "time_in",
-          isDuringCurfew: isCurfew,
+          isDuringCurfew: isDuringCurfew(now),
           hasPermit,
           hasViolation,
           permit: hasPermit ? {
@@ -252,7 +246,7 @@ export const insertEntry = async (req, res) => {
         };
       }
     } else {
-      // First entry - time in
+      // First entry for this student - time in
       const entryData = {
         student_no: studentNumber,
         student_name: fullName,
@@ -279,7 +273,7 @@ export const insertEntry = async (req, res) => {
         timestamp,
         message: "Time in recorded",
         entryType: "time_in",
-        isDuringCurfew: isCurfew,
+        isDuringCurfew: isDuringCurfew(now),
         hasPermit,
         hasViolation,
         permit: hasPermit ? {
@@ -295,7 +289,7 @@ export const insertEntry = async (req, res) => {
     lastStudentData = {
       fullName,
       studentNumber,
-      isDuringCurfew: isCurfew,
+      isDuringCurfew: isDuringCurfew(now),
       hasPermit,
       hasViolation,
       permit: hasPermit ? {
@@ -311,7 +305,7 @@ export const insertEntry = async (req, res) => {
     console.error("Error in insertEntry:", error);
     res.status(500).json({ 
       success: false, 
-      error: "Internal server error" 
+      error: error.message || "Internal server error" 
     });
   }
 };
@@ -325,8 +319,8 @@ export const getLatestEntry = async (req, res) => {
     timestamp: lastTimestamp,
     isDuringCurfew: lastStudentData?.isDuringCurfew || false,
     hasPermit: lastStudentData?.hasPermit || false,
-    hasViolation: lastStudentData?.hasViolation || false,
-    permit: lastStudentData?.permit || null
+    permit: lastStudentData?.permit || null,
+    hasViolation: lastStudentData?.hasViolation || false
   });
 };
 
@@ -337,7 +331,7 @@ export const sseUpdates = (req, res) => {
     'Connection': 'keep-alive'
   });
 
-  // Send initial data
+  // Send initial data with all relevant information
   res.write(`data: ${JSON.stringify({
     uid: lastUID,
     name: lastStudentData?.fullName || '',
@@ -345,8 +339,8 @@ export const sseUpdates = (req, res) => {
     timestamp: lastTimestamp,
     isDuringCurfew: lastStudentData?.isDuringCurfew || false,
     hasPermit: lastStudentData?.hasPermit || false,
-    hasViolation: lastStudentData?.hasViolation || false,
-    permit: lastStudentData?.permit || null
+    permit: lastStudentData?.permit || null,
+    hasViolation: lastStudentData?.hasViolation || false
   })}\n\n`);
 
   const clientId = Date.now();
