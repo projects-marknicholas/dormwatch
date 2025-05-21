@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dorm Watch - RFID Scanner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-md">
+        <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+            <!-- Header -->
+            <div class="bg-blue-600 p-6 text-white">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h1 class="text-2xl font-bold">Dorm Watch</h1>
+                        <p class="text-blue-100">RFID Access System</p>
+                    </div>
+                    <div class="bg-white/20 p-3 rounded-full">
+                        <i class="fas fa-id-card text-xl"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Status Card -->
+            <div class="p-6">
+                <div id="status-card" class="transition-all duration-300">
+                    <!-- Initial state - will be updated by JavaScript -->
+                    <div id="waiting-state" class="text-center py-8">
+                        <div class="animate-pulse">
+                            <div class="mx-auto h-16 w-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
+                                <i class="fas fa-hand-pointer text-blue-500 text-2xl"></i>
+                            </div>
+                            <h2 class="text-xl font-semibold text-gray-700">Please tap your card</h2>
+                            <p class="text-gray-500 mt-2">Place your RFID card near the scanner</p>
+                        </div>
+                    </div>
+
+                    <!-- Valid UID state (hidden by default) -->
+                    <div id="valid-uid-state" class="hidden">
+                        <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-2">
+                            <div class="flex items-center">
+                                <div class="flex-shrink-0">
+                                    <i class="fas fa-check-circle text-green-500 text-2xl"></i>
+                                </div>
+                                <div class="ml-3">
+                                    <h3 class="text-sm font-medium text-green-800">Access Granted</h3>
+                                    <div class="mt-1 text-sm text-green-700">
+                                        <p class="font-bold text-lg" id="display-name"></p>
+                                        <p class="text-gray-600" id="display-student-number"></p>
+                                        <div class="mt-2 pt-2 border-t border-green-200">
+                                            <p>UID: <span id="display-uid" class="font-mono text-sm"></span></p>
+                                            <p>Time: <span id="display-time" class="font-mono text-sm"></span></p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Violation Warning (hidden by default) -->
+                        <div id="violation-warning" class="hidden">
+                            <div class="bg-red-50 border border-red-200 rounded-lg p-3">
+                                <div class="flex items-start">
+                                    <div class="flex-shrink-0 pt-0.5">
+                                        <i class="fas fa-exclamation-triangle text-red-500"></i>
+                                    </div>
+                                    <div class="ml-3">
+                                        <h3 class="text-sm font-medium text-red-800">Curfew Violation</h3>
+                                        <div class="mt-1 text-sm text-red-700">
+                                            <p>Student accessed during curfew hours (10:30 PM - 6:00 AM) without permit</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Permit Status (hidden by default) -->
+                        <div id="permit-status" class="hidden">
+                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-2">
+                                <div class="flex items-start">
+                                    <div class="flex-shrink-0 pt-0.5">
+                                        <i class="fas fa-clipboard-check text-blue-500"></i>
+                                    </div>
+                                    <div class="ml-3">
+                                        <h3 class="text-sm font-medium text-blue-800">Permit Verified</h3>
+                                        <div class="mt-1 text-sm text-blue-700">
+                                            <p>Student has valid permit for this time</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Registration required state (hidden by default) -->
+                    <div id="register-state" class="hidden">
+                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                            <div class="flex items-center">
+                                <div class="flex-shrink-0">
+                                    <i class="fas fa-exclamation-triangle text-yellow-500 text-2xl"></i>
+                                </div>
+                                <div class="ml-3">
+                                    <h3 class="text-sm font-medium text-yellow-800">Registration Required</h3>
+                                    <div class="mt-1 text-sm text-yellow-700">
+                                        <p>This UID is not registered</p>
+                                        <p class="mt-2">
+                                            <a id="registration-link" href="#" target="_blank" class="inline-flex items-center px-3 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-800 rounded-md text-sm font-medium transition-colors">
+                                                Register Now <i class="fas fa-external-link-alt ml-1 text-xs"></i>
+                                            </a>
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Activity Log -->
+            <div class="border-t border-gray-200 px-6 py-4">
+                <h3 class="text-sm font-medium text-gray-500 mb-2">Recent Activity</h3>
+                <div id="activity-log" class="space-y-2 max-h-40 overflow-y-auto">
+                    <!-- Activity items will be added here by JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const SSE_ENDPOINT = 'http://localhost:3000/iot/entry/updates'; // Update with your server URL
+        const INACTIVITY_TIMEOUT = 5000; // 5 seconds
+        
+        // DOM Elements
+        const waitingState = document.getElementById('waiting-state');
+        const validUidState = document.getElementById('valid-uid-state');
+        const registerState = document.getElementById('register-state');
+        const displayUid = document.getElementById('display-uid');
+        const displayTime = document.getElementById('display-time');
+        const registrationLink = document.getElementById('registration-link');
+        const activityLog = document.getElementById('activity-log');
+        const violationWarning = document.getElementById('violation-warning');
+        const permitStatus = document.getElementById('permit-status');
+        
+        // State management
+        let lastUpdateTime = 0;
+        let inactivityTimer;
+        
+        // Connect to SSE endpoint
+        const eventSource = new EventSource(SSE_ENDPOINT);
+        
+        eventSource.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            lastUpdateTime = Date.now();
+            
+            // Clear any existing timeout
+            clearTimeout(inactivityTimer);
+            
+            // Reset to waiting state after 5 seconds of inactivity
+            inactivityTimer = setTimeout(showWaitingState, INACTIVITY_TIMEOUT);
+            
+            // Handle both success and registration cases
+            if (data.success) {
+                // Valid UID case
+                showValidUid(data);
+                addActivityLogItem(data, 'valid');
+                
+                // Handle curfew and violation states
+                if (data.hasViolation) {
+                    showViolationWarning();
+                    hidePermitStatus();
+                } else if (data.isDuringCurfew && data.hasPermit) {
+                    showPermitStatus();
+                    hideViolationWarning();
+                } else {
+                    hideViolationWarning();
+                    hidePermitStatus();
+                }
+            } else if (data.registrationLink) {
+                // Registration required case
+                showRegistrationRequired(data);
+                addActivityLogItem(data, 'registration');
+            }
+        };
+        
+        eventSource.onerror = (error) => {
+            console.error('EventSource failed:', error);
+            // In a production app, you might want to implement reconnection logic here
+        };
+        
+        // UI Update Functions
+        function showWaitingState() {
+            waitingState.classList.remove('hidden');
+            validUidState.classList.add('hidden');
+            registerState.classList.add('hidden');
+            hideViolationWarning();
+            hidePermitStatus();
+        }
+        
+        function showValidUid(data) {
+            waitingState.classList.add('hidden');
+            validUidState.classList.remove('hidden');
+            registerState.classList.add('hidden');
+            
+            document.getElementById('display-name').textContent = data.name || 'Registered Student';
+            document.getElementById('display-student-number').textContent = 
+                data.studentNumber ? `Student #: ${data.studentNumber}` : '';
+            document.getElementById('display-uid').textContent = data.uid;
+            document.getElementById('display-time').textContent = data.timestamp;
+            
+            // Clear any existing status indicators
+            const displayContainer = document.getElementById('valid-uid-state').querySelector('.ml-3');
+            const existingIndicator = displayContainer.querySelector('.status-indicator');
+            if (existingIndicator) {
+                displayContainer.removeChild(existingIndicator);
+            }
+            
+            // Add new entry type indicator
+            const statusIndicator = document.createElement('div');
+            statusIndicator.className = `status-indicator mt-2 text-sm font-medium ${
+                data.entryType === 'time_in' ? 'text-blue-600' : 'text-purple-600'
+            }`;
+            statusIndicator.textContent = data.entryType === 'time_in' 
+                ? '✓ Time In Recorded' 
+                : '✓ Time Out Recorded';
+            
+            displayContainer.appendChild(statusIndicator);
+        }
+        
+        function showViolationWarning() {
+            violationWarning.classList.remove('hidden');
+        }
+        
+        function hideViolationWarning() {
+            violationWarning.classList.add('hidden');
+        }
+        
+        function showPermitStatus() {
+            permitStatus.classList.remove('hidden');
+        }
+        
+        function hidePermitStatus() {
+            permitStatus.classList.add('hidden');
+        }
+        
+        function showRegistrationRequired(data) {
+            waitingState.classList.add('hidden');
+            validUidState.classList.add('hidden');
+            registerState.classList.remove('hidden');
+            
+            registrationLink.href = data.registrationLink;
+        }
+        
+        function addActivityLogItem(data, type) {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString();
+            
+            const logItem = document.createElement('div');
+            logItem.className = 'flex items-start text-sm';
+            
+            let iconClass, textClass, message;
+            
+            if (type === 'valid') {
+                iconClass = data.hasViolation ? 'text-red-500' : 
+                          (data.isDuringCurfew && data.hasPermit) ? 'text-blue-500' : 'text-green-500';
+                textClass = 'text-gray-700';
+                const namePart = data.name ? `${data.name}` : 'Student';
+                const numberPart = data.studentNumber ? ` (#${data.studentNumber})` : '';
+                let statusText = '';
+                
+                if (data.hasViolation) {
+                    statusText = ' - CURFEW VIOLATION';
+                } else if (data.isDuringCurfew && data.hasPermit) {
+                    statusText = ' - WITH PERMIT';
+                }
+                
+                message = `Access granted for ${namePart}${numberPart}${statusText}`;
+            } else {
+                iconClass = 'text-yellow-500';
+                textClass = 'text-gray-700';
+                message = `Registration required for UID: ${data.uid}`;
+            }
+            
+            logItem.innerHTML = `
+                <div class="flex-shrink-0 mt-0.5 mr-2">
+                    <i class="fas ${type === 'valid' ? 
+                        (data.hasViolation ? 'fa-exclamation-triangle' : 
+                         (data.isDuringCurfew && data.hasPermit) ? 'fa-clipboard-check' : 'fa-check-circle') : 
+                        'fa-exclamation-circle'} ${iconClass}"></i>
+                </div>
+                <div class="${textClass}">
+                    <p>${message}</p>
+                    <p class="text-xs text-gray-500">${timeString}</p>
+                </div>
+            `;
+            
+            activityLog.insertBefore(logItem, activityLog.firstChild);
+            
+            if (activityLog.children.length > 10) {
+                activityLog.removeChild(activityLog.lastChild);
+            }
+        }
+        
+        // Initialize
+        showWaitingState();
+    </script>
+</body>
+</html>

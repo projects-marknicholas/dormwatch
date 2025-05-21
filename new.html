@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ATC NTC Residence Hall Access</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        maroon: '#800000',
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-100 h-screen flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-xl w-96 overflow-hidden">
+        <!-- Header -->
+        <div class="bg-maroon text-white p-6 text-center">
+            <h1 class="text-2xl font-bold">ATC NTC</h1>
+            <h2 class="text-xl">Residence Hall</h2>
+        </div>
+        
+        <!-- Lock Icon -->
+        <div class="flex justify-center py-10">
+            <button id="lockButton" class="bg-red-100 rounded-full p-6 focus:outline-none hover:bg-red-200 transition">
+                <i class="fas fa-lock text-maroon text-5xl"></i>
+            </button>
+        </div>
+        
+        <!-- Instruction -->
+        <div class="text-center px-6 pb-6">
+            <p class="text-gray-700 text-lg font-medium mb-8">TAP YOUR CARD</p>
+            
+            <!-- Date and Time Display -->
+            <div class="flex justify-between bg-gray-100 rounded-lg p-4">
+                <div class="text-center">
+                    <p class="text-gray-500 text-sm">DATE</p>
+                    <p id="currentDate" class="font-semibold">May 19, 2025</p>
+                </div>
+                <div class="text-center">
+                    <p class="text-gray-500 text-sm">TIME</p>
+                    <p id="currentTime" class="font-semibold">12:34 PM</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Student Info Modal (hidden by default) -->
+    <div id="studentModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div class="bg-maroon text-white p-4 rounded-t-2xl flex justify-between items-center">
+                <h3 class="text-xl font-bold">Student Information</h3>
+                <button id="closeModal" class="text-white focus:outline-none">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <div class="p-6">
+                <div class="flex flex-col items-center mb-6">
+                    <!-- Student Image Placeholder -->
+                    <div class="w-24 h-24 rounded-full bg-gray-200 mb-4 overflow-hidden">
+                        <img id="studentImage" src="https://static.vecteezy.com/system/resources/previews/005/544/718/non_2x/profile-icon-design-free-vector.jpg" alt="Student Photo" class="w-full h-full object-cover">
+                    </div>
+                    
+                    <!-- Student Info -->
+                    <div class="text-center">
+                        <p class="text-gray-500 text-sm">Student Number</p>
+                        <p id="studentNumber" class="font-semibold text-lg mb-2">2022-06349</p>
+                        
+                        <p class="text-gray-500 text-sm">Full Name</p>
+                        <p id="studentName" class="font-semibold text-xl mb-4">ABOT, STEPHEN JURI GABREIL, DELA CRUZ</p>
+                        
+                        <div class="flex justify-between space-x-4">
+                            <div class="text-center">
+                                <p class="text-gray-500 text-sm">Date</p>
+                                <p id="accessDate" class="font-semibold">May 19, 2025</p>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-gray-500 text-sm">Time</p>
+                                <p id="accessTime" class="font-semibold">12:34 PM</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-green-100 border border-green-200 text-green-800 p-3 rounded-lg text-center">
+                    <i class="fas fa-check-circle mr-2"></i>
+                    <span>Time in successfully</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Function to update date and time
+        function updateDateTime() {
+            const now = new Date();
+            
+            // Format date (e.g., "May 19, 2025")
+            const options = { year: 'numeric', month: 'long', day: 'numeric' };
+            const formattedDate = now.toLocaleDateString('en-US', options);
+            document.getElementById('currentDate').textContent = formattedDate;
+            
+            // Format time (e.g., "12:34 PM")
+            let hours = now.getHours();
+            const minutes = now.getMinutes().toString().padStart(2, '0');
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12; // the hour '0' should be '12'
+            const formattedTime = `${hours}:${minutes} ${ampm}`;
+            
+            document.getElementById('currentTime').textContent = formattedTime;
+            
+            // Return the formatted date and time for use elsewhere
+            return { date: formattedDate, time: formattedTime };
+        }
+        
+        // Update immediately and then every second
+        updateDateTime();
+        setInterval(updateDateTime, 1000);
+        
+        // Modal functionality
+        document.getElementById('lockButton').addEventListener('click', function() {
+            // Get current date and time
+            const { date, time } = updateDateTime();
+            
+            // Update modal with current access time
+            document.getElementById('accessDate').textContent = date;
+            document.getElementById('accessTime').textContent = time;
+            
+            // In a real app, you would fetch this data from your database
+            // For demo purposes, we're using sample data
+            const sampleStudent = {
+                number: '2022-06349',
+                name: 'ABOT, STEPHEN JURI GABREIL, DELA CRUZ',
+                image: 'https://static.vecteezy.com/system/resources/previews/005/544/718/non_2x/profile-icon-design-free-vector.jpg'
+            };
+            
+            document.getElementById('studentNumber').textContent = sampleStudent.number;
+            document.getElementById('studentName').textContent = sampleStudent.name;
+            document.getElementById('studentImage').src = sampleStudent.image;
+            
+            // Show modal
+            document.getElementById('studentModal').classList.remove('hidden');
+        });
+        
+        document.getElementById('closeModal').addEventListener('click', function() {
+            document.getElementById('studentModal').classList.add('hidden');
+        });
+        
+        // Close modal when clicking outside
+        document.getElementById('studentModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                this.classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
