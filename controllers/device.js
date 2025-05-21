@@ -341,7 +341,8 @@ export const sseUpdates = (req, res) => {
     permit: lastStudentData?.permit || null,
     hasViolation: lastStudentData?.hasViolation || false,
     phTime: now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }) || "Invalid Date",
-    timeNow: now
+    timeNow: now.toString,
+    curfewNow: isDuringCurfew(now)
   })}\n\n`);
 
   const clientId = Date.now();
