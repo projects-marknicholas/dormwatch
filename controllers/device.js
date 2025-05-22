@@ -16,7 +16,7 @@ const isDuringCurfew = (date) => {
   const hours = phDate.getHours();
   const minutes = phDate.getMinutes();
   
-  return (hours > 19) || (hours < 6);
+  return (hours > 22) || (hours < 6);
 };
 
 // Check if student has valid permit for current time
